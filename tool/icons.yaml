@@ -1,0 +1,60 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# LiquidGlass 图标清单（阶段一 #6 的单一事实源）
+#
+#   * 左边是**我们自己的语义名**（Dart 里就是 LiquidIcons.home / LucideIcons.house）；
+#   * material: 对应 Material Symbols Rounded 的图标名（UI 主图标集，用于导航/工具栏/列表）；
+#   * lucide:   对应 Lucide 的图标名（线性风格，用于空状态、设置项、强调场景）；
+#   * tool/build_fonts.py 会按本清单同源生成「字体子集 + Dart 常量」，两边不可能对不上。
+#
+# 纪律：
+#   1. 不引入 SF Symbols 及其实质性相似仿制（Apple 平台外禁用，见素材红线）；
+#   2. 新增图标先在这里登记，再跑 `python tool/build_fonts.py`，不要在业务代码里裸写码点；
+#   3. 两个集合都只放"确实用到"的图标——子集体积是给低端机省内存的，不是摆设。
+icons:
+  # —— 导航与骨架
+  home:            { material: home,            lucide: house }
+  search:          { material: search,          lucide: search }
+  explore:         { material: explore,         lucide: compass }
+  live:            { material: live_tv,         lucide: tv }
+  dynamic:         { material: dynamic_feed,    lucide: newspaper }
+  message:         { material: chat_bubble,     lucide: message-circle }
+  profile:         { material: person,          lucide: user }
+  settings:        { material: settings,        lucide: settings }
+  more:            { material: more_horiz,      lucide: more-horizontal }
+
+  # —— 通用操作
+  back:            { material: arrow_back,      lucide: arrow-left }
+  forward:         { material: arrow_forward,   lucide: arrow-right }
+  chevron_right:   { material: chevron_right,   lucide: chevron-right }
+  close:           { material: close,           lucide: x }
+  add:             { material: add,             lucide: plus }
+  check:           { material: check,           lucide: check }
+  edit:            { material: edit,            lucide: pencil }
+  delete:          { material: delete,          lucide: trash-2 }
+  share:           { material: share,           lucide: share-2 }
+  download:        { material: download,        lucide: download }
+  refresh:         { material: refresh,         lucide: refresh-cw }
+  history:         { material: history,         lucide: history }
+  visibility:      { material: visibility,      lucide: eye }
+  lock:            { material: lock,            lucide: lock }
+  notifications:   { material: notifications,   lucide: bell }
+  folder:          { material: folder,          lucide: folder }
+
+  # —— 播放器（玻璃控制条专用）
+  play:            { material: play_arrow,      lucide: play }
+  pause:           { material: pause,           lucide: pause }
+  fullscreen:      { material: fullscreen,      lucide: maximize }
+  danmaku:         { material: subtitles,       lucide: subtitles }
+  volume:          { material: volume_up,       lucide: volume-2 }
+  speed:           { material: speed,           lucide: gauge }
+  cast:            { material: cast,            lucide: cast }
+  pip:             { material: picture_in_picture_alt, lucide: picture-in-picture-2 }
+
+  # —— 内容与观感
+  star:            { material: star,            lucide: star }
+  like:            { material: thumb_up,        lucide: thumbs-up }
+  list:            { material: format_list_bulleted, lucide: list }
+  light:           { material: light_mode,      lucide: sun }
+  dark:            { material: dark_mode,       lucide: moon }
+  glass:           { material: blur_on,         lucide: layers }

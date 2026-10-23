@@ -1,0 +1,289 @@
+# LiquidGlass for Bilibili —— CI 骨架（排期文档阶段一 #7）
+#
+# 与上游 PiliPlus 自带 workflow（.github/workflows/build.yml 等）的关系：
+#   上游那几个是**发版流水线**（fastforge + Inno Setup + 签名 + GitHub Release）；
+#   本文件是**我们的验证流水线**：每次 push/PR 验证「能编译、能出未签名产物、接口还活着」，
+#   发版仍走上游那套（阶段三 #16/#17 再接）。
+#
+# ⚠️ 必须在构建前跑 tool/patch-upstream.ps1，否则 flutter analyze 会报 118 个 error、构建必红。
+#    原因：PiliPlus 的自有副本引用了 Flutter / material_ui 的私有符号，上游靠 lib/scripts/patch.ps1
+#    在 CI 里把这些符号 expose 出来。详见 docs/问题与解决方案.md §12。
+#
+# 未签名产物说明（阶段三 #16/#17 再补签名）：
+#   * Windows：flutter build windows --release 出免安装目录（未签名，SmartScreen 需手动放行）
+#   * Android：flutter build apk --release 在无签名配置时用 debug key 签名，仅供内测安装
+#
+# D1（2026-10-06）新增两条硬需求（手册 §95/§103 入 CI）：
+#   * §95：门禁 8 步全在 dart/资产/脚本层，**Gradle 层是已知盲区**（sentry 8.x 的
+#     compileDebugKotlin 事故：pub/analyze/门禁全绿、Android 构建才红）⇒ CI 补
+#     `flutter build apk --debug` 维度（build-android-debug job）。
+#   * §103：dart-define 在产物上隐身 ⇒ CI 的取证包必须**把 define 集写进 step summary**
+#     （"我传了"要有证据力），且源码侧启动行自证（[GlassDiag]/[FT] installed）有 tripwire。
+
+name: LiquidGlass CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    # 每日 22:00 UTC = 北京 06:00：接口存活巡检（接口失效是常态，早发现早处理）
+    - cron: '0 22 * * *'
+
+permissions:
+  contents: read
+  # 上传 artifact 需要 actions: write，否则 upload-artifact@v7 报 403
+  # (Resource not accessible by integration)，Windows/Android/smoke 三个 job 都会红。
+  actions: write
+
+env:
+  # ⚠️ 必须与本机一致地走 flutter-io.cn 镜像：pubspec.lock 里的 hosted 源地址已写成镜像，
+  #    若这里改成 pub.dev，pub 会认为"源变了"而**重新解析版本**——实测因此把
+  #    material_ui 从 1.4.0 升到 1.5.0，补丁打错版本、analyze 直接红。
+  PUB_HOSTED_URL: https://pub.flutter-io.cn
+  FLUTTER_STORAGE_BASE_URL: https://storage.flutter-io.cn
+
+jobs:
+  # ────────────────────────────────────────────────────────────
+  # 0. 接口存活 smoke test（零第三方依赖，顺手当每日巡检）
+  # ────────────────────────────────────────────────────────────
+  smoke:
+    name: 接口存活巡检
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 跑 smoke test（匿名，19 端点）
+        id: smoke
+        continue-on-error: true   # 境外机房 IP 可能被 B 站风控，-352 判 WARN 不判 FAIL
+        run: python3 tool/smoke_test.py --quiet --json smoke-report.json
+
+      - name: 控制台摘要
+        if: always()
+        run: |
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json, pathlib
+          p = pathlib.Path("smoke-report.json")
+          if not p.exists():
+              print("## 接口巡检\n\n未产出报告（脚本异常）")
+          else:
+              r = json.loads(p.read_text(encoding="utf-8"))
+              s = r["summary"]
+              print("## 接口巡检（{}）\n".format(r["generated_at"]))
+              print("| 端点总数 | OK | WARN | FAIL | 登录态 |")
+              print("|---|---|---|---|---|")
+              print("| {} | {} | {} | {} | {} |".format(
+                  s["total"], s["ok"], s["warn"], s["fail"], "是" if r["logged_in"] else "否"))
+              for x in r["results"]:
+                  if x["verdict"] != "OK":
+                      print("- `{}` [{}] {} -> {}".format(x["verdict"], x["section"], x["name"], x["detail"]))
+          PY
+
+      - uses: actions/upload-artifact@v7
+        continue-on-error: true
+        if: always()
+        with:
+          retention-days: 3
+          name: smoke-report
+          path: smoke-report.json
+          if-no-files-found: warn
+
+  # ────────────────────────────────────────────────────────────
+  # 1. Windows 桌面（未签名免安装产物）
+  # ────────────────────────────────────────────────────────────
+  build-windows:
+    name: Windows x64（未签名）
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version-file: pubspec.yaml   # 版本以 pubspec.yaml 的 environment.flutter 为准
+
+      - name: 拉依赖
+        run: flutter pub get
+
+      - name: 校验依赖未被重新解析（防止换源导致版本漂移）
+        shell: pwsh
+        run: |
+          # pubspec.lock 是上游锁定的唯一权威；本机与 CI 都必须"照锁不动"。
+          # 实测教训：源地址不一致会让 pub 重新解析，material_ui 1.4.0 → 1.5.0，
+          # 于是补丁打错版本、analyze 直接失败。这里用 git diff 兜住。
+          git diff --exit-code -- pubspec.lock
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "pubspec.lock 被 pub get 改写了：依赖被重新解析。请检查 PUB_HOSTED_URL 是否与 lock 内的源一致。"
+            exit 1
+          }
+
+      - name: 给 SDK + material_ui 打补丁（不做这步必然编译失败）
+        shell: pwsh
+        run: ./tool/patch-upstream.ps1 -Platform windows
+
+      - name: 静态检查（补丁是否到位；error 必须为 0，info/warning 不拦）
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: 构建
+        run: flutter build windows --release --no-pub
+
+      - uses: actions/upload-artifact@v7
+        continue-on-error: true
+        with:
+          retention-days: 3
+          name: LiquidGlass-windows-x64-unsigned
+          path: build/windows/x64/runner/Release/
+          if-no-files-found: error
+
+  # ────────────────────────────────────────────────────────────
+  # 2. Android（未签名 APK；ubuntu runner 自带 Android SDK + JDK17）
+  # ────────────────────────────────────────────────────────────
+  build-android:
+    name: Android（未签名 APK）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # 磁盘清理（2026-10-07 CI 事故实证：runner 镜像基线漂移 ⇒ 构建到
+      # bundleReleaseLocalLintAar 时只剩 17MB，libmpv.so 写不进 ZIP 而挂）。
+      # 删的是 runner 自带的无关大项；/usr/local/lib/android（SDK）绝不能动。
+      - name: 释放磁盘空间（在拉依赖/构建之前）
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost
+          docker image prune -af 2>/dev/null || true
+          df -h /
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version-file: pubspec.yaml
+
+      - name: 拉依赖
+        run: flutter pub get
+
+      - name: 校验依赖未被重新解析（防止换源导致版本漂移）
+        shell: pwsh
+        run: |
+          git diff --exit-code -- pubspec.lock
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "pubspec.lock 被 pub get 改写了：依赖被重新解析。请检查 PUB_HOSTED_URL 是否与 lock 内的源一致。"
+            exit 1
+          }
+
+      - name: 给 SDK + material_ui 打补丁（Linux 上同样必须）
+        shell: pwsh
+        run: ./tool/patch-upstream.ps1 -Platform android
+
+      - name: 静态检查（补丁是否到位；error 必须为 0，info/warning 不拦）
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: 跑我们自己的单测
+        run: flutter test test/own
+
+      - name: 启动生效标志口径自检（§103 tripwire）
+        shell: bash
+        run: |
+          # 删掉任何一条启动行自证 ⇒ CI 红（§103①：define 门控必须有开机可读的一行）。
+          grep -q '\[GlassDiag\]' lib/plugin/pl_player/view/view.dart \
+            || { echo "::error::[GlassDiag] 启动行消失（§103 tripwire）"; exit 1; }
+          grep -q '\[FT\] GlassFrameTiming installed' lib/debug/glass_frame_timing.dart \
+            || { echo "::error::[FT] installed 启动行消失（§103/§108 硬前置）"; exit 1; }
+          echo "boot-line tripwires OK"
+
+      - name: 构建（release，内测未签名）
+        run: flutter build apk --release --no-pub
+
+      - uses: actions/upload-artifact@v7
+        continue-on-error: true
+        with:
+          retention-days: 3
+          name: LiquidGlass-android-unsigned
+          path: build/app/outputs/flutter-apk/*.apk
+          if-no-files-found: error
+  # ────────────────────────────────────────────────────────────
+  # 3. Android debug 维度（D1，2026-10-06）
+  #    §95：门禁 8 步不含 Gradle 层 ⇒ debug 构建是唯一能提前抓到
+  #    "pub/analyze 全绿但 Android 构建红"的维度（sentry 8.x compileDebugKotlin 事故）。
+  #    §103：取证包（GLASS_FRAME_TIMING）的 define 集必须写进 step summary——
+  #    "我传了"三个字没有证据力，产物上 define 是隐身的。
+  # ────────────────────────────────────────────────────────────
+  build-android-debug:
+    name: Android debug（§95 Gradle 维度 + §103 取证包）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # 与 build-android 同源：先清磁盘（见上节注释——libmpv/NDK 体积＋两次构建更吃盘）
+      - name: 释放磁盘空间（在拉依赖/构建之前）
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost
+          docker image prune -af 2>/dev/null || true
+          df -h /
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version-file: pubspec.yaml
+
+      - name: 拉依赖
+        run: flutter pub get
+
+      - name: 校验依赖未被重新解析（防止换源导致版本漂移）
+        shell: pwsh
+        run: |
+          git diff --exit-code -- pubspec.lock
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "pubspec.lock 被 pub get 改写了：依赖被重新解析。"
+            exit 1
+          }
+
+      - name: 给 SDK + material_ui 打补丁（Linux 上同样必须）
+        shell: pwsh
+        run: ./tool/patch-upstream.ps1 -Platform android
+
+      - name: Gradle debug 维度构建（§95）
+        run: flutter build apk --debug --no-pub
+
+      - uses: actions/upload-artifact@v7
+        continue-on-error: true
+        if: github.event_name == 'workflow_dispatch' || failure()
+        with:
+          retention-days: 3
+          name: LiquidGlass-android-debug-unsigned
+          path: build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
+
+      - name: 取证包构建（§103：define 集写进 summary）
+        env:
+          FT_DEFINES: GLASS_FRAME_TIMING=true
+        run: |
+          flutter build apk --debug --no-pub --dart-define=GLASS_FRAME_TIMING=true
+          {
+            echo "## 取证包 define 集（§103 口径）"
+            echo ""
+            echo "- \`$FT_DEFINES\`（只此一项；多一个 define 就多一个变量，见帧率成对窗纪律）"
+            echo "- 产物：\`app-debug.apk\`（上传为 LiquidGlass-android-debug-ft）"
+            echo "- 启动自证行：\`[FT] GlassFrameTiming installed\`（缺即废窗，见手册 §108 硬前置）"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v7
+        continue-on-error: true
+        if: github.event_name == 'workflow_dispatch' || failure()
+        with:
+          retention-days: 3
+          name: LiquidGlass-android-debug-ft
+          path: build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error

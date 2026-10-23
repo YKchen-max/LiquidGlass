@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LiquidGlassKit —— 液态玻璃材质、shader 与降级策略的独立实现包。
+# 刻意保持为「无插件、纯 Dart/Flutter 包」：所有平台相关能力（GPU 探测、窗口材质）
+# 后续以可选 plugin 形式另开包，避免本包给宿主 App 引入构建面。
+name: liquid_glass_kit
+description: Liquid Glass material system (tokens, shaders, fallback tiers) for the LiquidGlass Bilibili client.
+version: 0.1.0
+publish_to: "none"
+
+environment:
+  sdk: ^3.13.0
+  flutter: ">=3.47.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+# 字体由 tool/build_fonts.py 从 tool/icons.yaml + 源字体同源生成（图标子集 + CJK 子集）；
+# 许可证原文随包入库：assets/fonts/LICENSES/
+flutter:
+  fonts:
+    - family: LiquidIcons
+      fonts:
+        - asset: assets/fonts/LiquidIcons.ttf
+    - family: LucideIcons
+      fonts:
+        - asset: assets/fonts/LucideIcons.ttf
+    - family: LiquidText
+      fonts:
+        - asset: assets/fonts/LiquidText-Regular.ttf

@@ -1,0 +1,45 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LiquidGlassKit —— 液态玻璃材质、shader 与降级策略的独立实现包。
+# 刻意保持为「无插件、纯 Dart/Flutter 包」：所有平台相关能力（GPU 探测、窗口材质）
+# 后续以可选 plugin 形式另开包，避免本包给宿主 App 引入构建面。
+name: liquid_glass_kit
+description: Liquid Glass material system (tokens, shaders, fallback tiers) for the LiquidGlass Bilibili client.
+version: 0.1.0
+publish_to: "none"
+
+environment:
+  sdk: ^3.13.0
+  flutter: ">=3.47.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+# 字体由 tool/build_fonts.py 从 tool/icons.yaml + 源字体同源生成（图标子集 + CJK 子集）；
+# 许可证原文随包入库：assets/fonts/LICENSES/
+# #11 / M1a：折射 shader 的**预编译 .iplr**（我方 impellerc 从 pinned commit 0968d9e6… 的真源码编出，
+# gles+gles3+vulkan 三阶段）。**故意不走 `shaders:` 构建期块**：那 4 个 .frag 的 SkSL 目标在
+# Windows 上必失败（#8 已证）⇒ 放进 `shaders:` 会把 Windows 构建整块搞坏 ✗。
+# 作为普通资产 ⇒ Android/Impeller 运行时 `FragmentProgram.fromAsset` 加载；
+# Windows 永不选折射档（既有平台门）⇒ SkSL 路径永不被触碰 ✓。
+flutter:
+  assets:
+    - lib/assets/shaders/liquid_glass_geometry_blended.iplr
+    - lib/assets/shaders/liquid_glass_filter.iplr
+    - lib/assets/shaders/liquid_glass_final_render.iplr
+    - lib/assets/shaders/liquid_glass_arbitrary.iplr
+  fonts:
+    - family: LiquidIcons
+      fonts:
+        - asset: assets/fonts/LiquidIcons.ttf
+    - family: LucideIcons
+      fonts:
+        - asset: assets/fonts/LucideIcons.ttf
+    - family: LiquidText
+      fonts:
+        - asset: assets/fonts/LiquidText-Regular.ttf

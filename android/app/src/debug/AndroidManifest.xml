@@ -1,0 +1,25 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!--
+      Impeller 实验开关（排期 #11 第 0 步：真折射能不能上 Android 的前提）。
+
+      为什么只在 debug/profile 覆盖里开：main 里为了 Windows/Skia 一致性显式关掉了 Impeller
+      （android/app/src/main/AndroidManifest.xml 的 EnableImpeller=false），发布版必须保持现状；
+      这两份 overlay 只在 debug/profile 构建类型生效，用于真机验证 Impeller 与真折射。
+
+      tools:replace="android:value" 是必须的：main 里已有同名 meta-data（value=false），
+      覆盖值不同时 manifest merger 会直接报冲突而失败。
+
+      注意：XML 注释里不能出现连续两个减号（合法性问题，实测撞过一次 manifest merger
+      "Error parsing ... AndroidManifest.xml"），所以下面写 extra 名字时做了拆分。
+
+      退回方法（一键）：删掉本文件里的 meta-data 节点（或整份 overlay）再重建；
+      也可以运行时用 am start 的 enable-impeller extra 置 false（前提是该 extra 在引擎版本里生效）。
+    -->
+    <application>
+        <meta-data
+            android:name="io.flutter.embedding.android.EnableImpeller"
+            android:value="true"
+            tools:replace="android:value" />
+    </application>
+</manifest>

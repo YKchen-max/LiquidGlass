@@ -1,0 +1,26 @@
+{
+  "_comment": [
+    "kit shader asset baseline -- golden fingerprints for app/tool/preflight.ps1 step 7.5.",
+    "Why: the flip-text scan catches the platform y-flip coming back (final_render 2/2,",
+    "filter 1/1, arbitrary 2/2), but geometry_blended is 0-flip in BOTH the repo-recipe",
+    "build and the current asset while their sha256 differ (AAC7DE66.. vs C3C8DDE1..).",
+    "So the flip scan alone cannot cover it; this baseline covers all four.",
+    "Rule: if an asset is intentionally changed, update the fingerprints here in the same",
+    "commit and say why in the commit message -- otherwise the gate must FAIL.",
+    "Evidence for the current values: docs/着色器分支普查与风险登记.md (census)",
+    "and docs/真折射移植计划.md 0.1.36 (landed conditional assets)."
+  ],
+  "note_skSL": "The SkSL stage in an .iplr does NOT start with '#version' (it starts with a spirv-cross banner), so the flip-text scan skips it. The kit never uses the Skia path; this is recorded, not enforced.",
+  "expected": [
+    { "file": "liquid_glass_final_render.iplr",   "bytes": 14880, "sha256_prefix": "371599370F071F03" },
+    { "file": "liquid_glass_geometry_blended.iplr","bytes": 51272, "sha256_prefix": "C3C8DDE1BB9CDA43" },
+    { "file": "liquid_glass_filter.iplr",          "bytes": 68384, "sha256_prefix": "E773324B35D549B7" },
+    { "file": "liquid_glass_arbitrary.iplr",       "bytes": 37952, "sha256_prefix": "D09FB39503772219" }
+  ],
+  "known_landmine": {
+    "_comment": "repo-recipe rebuild of poc/shaders-src reproduces this byte-for-byte (flip 2/2). Never ship it.",
+    "file": "liquid_glass_final_render.iplr",
+    "bytes": 15128,
+    "sha256_prefix": "DB1E6F4E4D83126F"
+  }
+}
