@@ -39,14 +39,20 @@ void main() {
     test('appBarTheme foregroundColor = onSurface（与 LiquidAppBarSkin 同 token）', () {
       expect(themeUtils.contains('foregroundColor: colorScheme.onSurface'), isTrue);
     });
-    test('cardTheme shape all-12 / dialogTheme shape all-28（液态家族同角）', () {
-      expect(themeUtils.contains('Radius.circular(12)'), isTrue);
+    test('cardTheme shape 走 DesignTokens.brMedium(16) / dialogTheme shape all-28', () {
+      // 2026-10-23：卡片圆角改走设计 token（12 → 16），断针同步改成检查 token 引用，
+      // 并额外钉住 token 值本身，防止有人直接改 token 绕过这条针。
+      expect(themeUtils.contains('DesignTokens.brMedium'), isTrue);
       expect(themeUtils.contains('Radius.circular(28)'), isTrue);
+      final tokens = _read('lib/common/design_tokens.dart');
+      expect(tokens.contains('Radius.circular(16)'), isTrue);
     });
-    test('style.bottomSheetRadius = 28 且不再含 18（唯一真视觉 delta 已落）', () {
-      expect(style.contains('bottomSheetRadius = BorderRadius.vertical(top: .circular(28))'),
-          isTrue);
+    test('style.bottomSheetRadius 走 DesignTokens.brSheet(24) 且不再含 18', () {
+      // 2026-10-23：底部弹层 28 → 24（收一档，与卡片 16 形成 24/16/10 三级）。
+      expect(style.contains('bottomSheetRadius = DesignTokens.brSheet'), isTrue);
       expect(style.contains('.circular(18)'), isFalse);
+      final tokens = _read('lib/common/design_tokens.dart');
+      expect(tokens.contains('Radius.circular(24)'), isTrue);
     });
   });
 
